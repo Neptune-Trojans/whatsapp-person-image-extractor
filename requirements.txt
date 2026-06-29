@@ -1,0 +1,15 @@
+# Runtime dependencies for the face-finding pipeline.
+# pyproject.toml is the source of truth; this file is for convenient setup:
+#   pip install -r requirements.txt
+# It installs the project itself (editable) plus the face-recognition stack.
+
+-e .
+
+# Face detection & recognition (InsightFace + ONNX runtime)
+insightface>=0.7.3
+onnxruntime>=1.17
+
+# Image handling
+opencv-python>=4.9
+numpy>=1.26
+Pillow>=10.0

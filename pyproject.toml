@@ -8,7 +8,13 @@ version = "0.1.0"
 description = "Find images of a specific person inside large WhatsApp group chat exports."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "insightface>=0.7.3",
+    "onnxruntime>=1.17",
+    "opencv-python>=4.9",
+    "numpy>=1.26",
+    "Pillow>=10.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
