@@ -10,13 +10,9 @@ the zip (without the .zip suffix). Run from the project root:
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
+from face_finder.config import DATA_DIR, PROJECT_ROOT
 from face_finder.utils import extract_zip
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-DATA_DIR = PROJECT_ROOT / "data"
 
 
 def main() -> int:

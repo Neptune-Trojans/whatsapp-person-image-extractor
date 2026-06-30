@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+# Well-known repository directories. This file lives at
+# src/face_finder/config.py, so the repo root is three levels up.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data"
+OUTPUT_DIR = PROJECT_ROOT / "output"
+
 # InsightFace model bundle (detection + ArcFace recognition).
 # Auto-downloads to ~/.insightface on first use.
 MODEL_NAME = "buffalo_l"

@@ -15,11 +15,11 @@ import argparse
 import logging
 from pathlib import Path
 
+from face_finder.config import OUTPUT_DIR, PROJECT_ROOT
 from face_finder.faces import FaceAnalyzer
 from face_finder.visualization import draw_faces
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_OUT_DIR = PROJECT_ROOT / "output" / "visualizations"
+DEFAULT_OUT_DIR = OUTPUT_DIR / "visualizations"
 
 log = logging.getLogger("visualize_detections")
 
