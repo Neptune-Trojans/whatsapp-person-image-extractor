@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import logging
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,6 +68,7 @@ def find_person(
     *,
     analyzer: FaceAnalyzer | None = None,
     progress: bool = True,
+    on_progress: Callable[[int, int, int], None] | None = None,
 ) -> PipelineResult:
     """Find images of the reference person within ``media_dir``.
 
@@ -78,7 +80,10 @@ def find_person(
         threshold: Minimum cosine similarity for a match.
         analyzer: Optional pre-built analyzer (injected in tests). When ``None``
             a default :class:`FaceAnalyzer` is constructed.
-        progress: Whether to show a progress bar while scanning.
+        progress: Whether to show a tqdm progress bar while scanning.
+        on_progress: Optional callback invoked after each scanned image with
+            ``(done, total, matches_so_far)`` — used by the web UI for live
+            progress.
 
     Returns:
         A :class:`PipelineResult` summarising the run.
@@ -97,7 +102,8 @@ def find_person(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     matches, detections, scanned, skipped = _scan(
-        media_dir, out_dir, analyzer, reference_embedding, threshold, progress
+        media_dir, out_dir, analyzer, reference_embedding, threshold, progress,
+        on_progress,
     )
 
     manifest = _write_manifest(out_dir, media_dir, detections)
@@ -158,6 +164,7 @@ def _scan(
     reference_embedding: np.ndarray,
     threshold: float,
     progress: bool,
+    on_progress: Callable[[int, int, int], None] | None = None,
 ) -> tuple[list[Match], list[Detection], int, int]:
     """Scan every image under ``media_dir``, recording per-face detections.
 
@@ -173,46 +180,47 @@ def _scan(
     out_dir_resolved = out_dir.resolve()
 
     images = list(iter_images(media_dir))
-    for path in tqdm(
-        images, total=len(images), desc="Scanning", unit="img", disable=not progress
-    ):
+    total = len(images)
+    bar = tqdm(
+        images, total=total, desc="Scanning", unit="img", disable=not progress
+    )
+    for done, path in enumerate(bar, start=1):
         # Don't re-scan our own output if out_dir lives inside media_dir.
         if out_dir_resolved in path.resolve().parents:
-            continue
+            pass
+        else:
+            faces = analyzer.embed_image(path)
+            if faces is None:  # decode failure
+                skipped += 1
+            elif not faces:  # decoded, but no faces
+                scanned += 1
+                detections.append(Detection(source=path, box=None, similarity=None))
+            else:
+                scanned += 1
+                face_scores = matcher.scores(reference_embedding, faces)
+                for face, score in zip(faces, face_scores):
+                    x_min, y_min, x_max, y_max = (float(v) for v in face.bbox)
+                    detections.append(
+                        Detection(
+                            source=path,
+                            box=(x_min, y_min, x_max, y_max),
+                            similarity=score,
+                        )
+                    )
+                best = max(face_scores)
+                if best >= threshold:
+                    output = _copy_match(path, out_dir)
+                    matches.append(
+                        Match(
+                            source=path,
+                            similarity=best,
+                            num_faces=len(faces),
+                            output=output,
+                        )
+                    )
 
-        faces = analyzer.embed_image(path)
-        if faces is None:  # decode failure
-            skipped += 1
-            continue
-
-        scanned += 1
-
-        if not faces:
-            detections.append(Detection(source=path, box=None, similarity=None))
-            continue
-
-        face_scores = matcher.scores(reference_embedding, faces)
-        for face, score in zip(faces, face_scores):
-            x_min, y_min, x_max, y_max = (float(v) for v in face.bbox)
-            detections.append(
-                Detection(
-                    source=path,
-                    box=(x_min, y_min, x_max, y_max),
-                    similarity=score,
-                )
-            )
-
-        best = max(face_scores)
-        if best >= threshold:
-            output = _copy_match(path, out_dir)
-            matches.append(
-                Match(
-                    source=path,
-                    similarity=best,
-                    num_faces=len(faces),
-                    output=output,
-                )
-            )
+        if on_progress is not None:
+            on_progress(done, total, len(matches))
 
     return matches, detections, scanned, skipped
 

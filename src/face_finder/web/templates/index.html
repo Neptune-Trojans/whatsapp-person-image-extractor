@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WhatsApp Face Finder</title>
+  <style>
+    :root { --fg:#1c1c1e; --muted:#6b7280; --border:#d1d5db; --accent:#2563eb; --bg:#f7f7f8; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, system-ui, sans-serif; color: var(--fg);
+           background: var(--bg); margin: 0; padding: 2rem; }
+    .card { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid var(--border);
+            border-radius: 12px; padding: 1.5rem 1.75rem; }
+    h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+    p.sub { color: var(--muted); margin: 0 0 1.5rem; font-size: 0.9rem; }
+    label { display: block; font-weight: 600; font-size: 0.85rem; margin: 0.9rem 0 0.3rem; }
+    .row { display: flex; gap: 0.5rem; }
+    input[type=text], input[type=number] { flex: 1; padding: 0.5rem 0.6rem; border: 1px solid var(--border);
+            border-radius: 8px; font-size: 0.9rem; font-family: ui-monospace, monospace; }
+    input[type=number] { max-width: 8rem; font-family: inherit; }
+    button { padding: 0.5rem 0.9rem; border: 1px solid var(--border); background: #fff;
+             border-radius: 8px; cursor: pointer; font-size: 0.85rem; }
+    button:hover { background: #f0f0f3; }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+    button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .controls { margin-top: 1.5rem; display: flex; align-items: center; gap: 1rem; }
+    progress { width: 100%; height: 14px; }
+    #progressWrap { margin-top: 1.25rem; display: none; }
+    #statusText { font-size: 0.9rem; margin-top: 0.4rem; }
+    #phase { color: var(--muted); font-size: 0.82rem; }
+    .ok { color: #15803d; } .err { color: #b91c1c; }
+    /* modal */
+    #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+             align-items: center; justify-content: center; }
+    #modal .inner { background: #fff; width: min(560px, 92vw); max-height: 80vh; border-radius: 12px;
+             padding: 1.25rem; display: flex; flex-direction: column; }
+    #curPath { font-family: ui-monospace, monospace; font-size: 0.8rem; color: var(--muted);
+             word-break: break-all; margin: 0.5rem 0; }
+    #dirList { flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+    .entry { padding: 0.5rem 0.7rem; cursor: pointer; border-bottom: 1px solid #f0f0f3; font-size: 0.88rem; }
+    .entry:hover { background: #eff3ff; }
+    .modal-actions { display: flex; justify-content: space-between; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>WhatsApp Face Finder</h1>
+    <p class="sub">Pick folders, set a threshold, and run. Matches are copied to the output folder with a <code>matches.csv</code> report.</p>
+
+    <label>Media folder (images to scan)</label>
+    <div class="row">
+      <input type="text" id="media" value="{{ default_media }}">
+      <button onclick="openBrowser('media')">Browse…</button>
+    </div>
+
+    <label>Output folder (where matches are copied)</label>
+    <div class="row">
+      <input type="text" id="output" value="{{ default_output }}">
+      <button onclick="openBrowser('output')">Browse…</button>
+    </div>
+
+    <label>Reference folder (photos of the target person)</label>
+    <div class="row">
+      <input type="text" id="reference" value="{{ default_reference }}">
+      <button onclick="openBrowser('reference')">Browse…</button>
+    </div>
+
+    <label>Match threshold</label>
+    <input type="number" id="threshold" value="{{ default_threshold }}" step="0.01" min="0" max="1">
+
+    <div class="controls">
+      <button class="primary" id="runBtn" onclick="run()">Run</button>
+      <span id="phase"></span>
+    </div>
+
+    <div id="progressWrap">
+      <progress id="bar" value="0" max="100"></progress>
+      <div id="statusText"></div>
+    </div>
+  </div>
+
+  <!-- Folder browser modal -->
+  <div id="modal">
+    <div class="inner">
+      <strong>Select a folder</strong>
+      <div id="curPath"></div>
+      <div id="dirList"></div>
+      <div class="modal-actions">
+        <button onclick="closeBrowser()">Cancel</button>
+        <button class="primary" onclick="useFolder()">Use this folder</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let targetField = null;   // which input the browser is filling
+    let currentPath = null;   // path shown in the browser
+    let pollTimer = null;
+
+    async function openBrowser(field) {
+      targetField = field;
+      await navigate(document.getElementById(field).value || "");
+      document.getElementById("modal").style.display = "flex";
+    }
+    function closeBrowser() { document.getElementById("modal").style.display = "none"; }
+
+    async function navigate(path) {
+      const res = await fetch("/api/browse?path=" + encodeURIComponent(path));
+      const data = await res.json();
+      currentPath = data.path;
+      document.getElementById("curPath").textContent = data.path;
+      const list = document.getElementById("dirList");
+      list.innerHTML = "";
+      if (data.parent) addEntry(list, "📁 ..", data.parent);
+      for (const d of data.dirs) addEntry(list, "📁 " + d, data.path.replace(/\/$/, "") + "/" + d);
+    }
+    function addEntry(list, label, path) {
+      const el = document.createElement("div");
+      el.className = "entry"; el.textContent = label;
+      el.onclick = () => navigate(path);
+      list.appendChild(el);
+    }
+    function useFolder() {
+      document.getElementById(targetField).value = currentPath;
+      closeBrowser();
+    }
+
+    async function run() {
+      const body = {
+        media: document.getElementById("media").value,
+        output: document.getElementById("output").value,
+        reference: document.getElementById("reference").value,
+        threshold: document.getElementById("threshold").value,
+      };
+      const res = await fetch("/api/run", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) { setPhase(data.error || "Failed to start", true); return; }
+      document.getElementById("runBtn").disabled = true;
+      document.getElementById("progressWrap").style.display = "block";
+      poll();
+    }
+
+    function setPhase(text, isErr) {
+      const el = document.getElementById("phase");
+      el.textContent = text;
+      el.className = isErr ? "err" : "";
+    }
+
+    async function poll() {
+      const res = await fetch("/api/status");
+      const s = await res.json();
+      const bar = document.getElementById("bar");
+      const status = document.getElementById("statusText");
+
+      if (s.total > 0) { bar.max = s.total; bar.value = s.done; }
+      setPhase(s.phase, s.state === "error");
+
+      if (s.state === "running") {
+        status.textContent = `Scanning ${s.done}/${s.total} — ${s.matches} match(es)`;
+        pollTimer = setTimeout(poll, 1000);
+      } else if (s.state === "done") {
+        bar.value = bar.max;
+        status.innerHTML = `<span class="ok">${s.message}</span><br>Manifest: <code>${s.manifest}</code>`;
+        document.getElementById("runBtn").disabled = false;
+      } else if (s.state === "error") {
+        status.innerHTML = `<span class="err">${s.message}</span>`;
+        document.getElementById("runBtn").disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

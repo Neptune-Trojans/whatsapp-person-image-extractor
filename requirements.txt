@@ -13,3 +13,6 @@ onnxruntime>=1.17
 opencv-python>=4.9
 numpy>=1.26
 Pillow>=10.0
+
+# Local web UI
+flask>=3.0
