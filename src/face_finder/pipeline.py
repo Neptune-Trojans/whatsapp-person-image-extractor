@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import csv
 import logging
-import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +18,7 @@ from tqdm import tqdm
 
 from .config import DEFAULT_THRESHOLD
 from .faces import FaceAnalyzer, matcher
-from .utils import iter_images
+from .utils import copy_into, iter_images
 
 log = logging.getLogger(__name__)
 
@@ -209,7 +208,7 @@ def _scan(
                     )
                 best = max(face_scores)
                 if best >= threshold:
-                    output = _copy_match(path, out_dir)
+                    output = copy_into(path, out_dir)
                     matches.append(
                         Match(
                             source=path,
@@ -223,19 +222,6 @@ def _scan(
             on_progress(done, total, len(matches))
 
     return matches, detections, scanned, skipped
-
-
-def _copy_match(source: Path, out_dir: Path) -> Path:
-    """Copy ``source`` into ``out_dir``, avoiding name collisions."""
-    target = out_dir / source.name
-    if target.exists():
-        stem, suffix = source.stem, source.suffix
-        i = 1
-        while target.exists():
-            target = out_dir / f"{stem}_{i}{suffix}"
-            i += 1
-    shutil.copy2(source, target)
-    return target
 
 
 def _write_manifest(

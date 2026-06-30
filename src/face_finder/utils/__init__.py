@@ -1,4 +1,4 @@
 from .archive import extract_zip
-from .media import iter_images
+from .media import copy_into, iter_images
 
-__all__ = ["extract_zip", "iter_images"]
+__all__ = ["copy_into", "extract_zip", "iter_images"]
